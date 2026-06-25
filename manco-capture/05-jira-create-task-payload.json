@@ -1,0 +1,56 @@
+{
+  "_comment_endpoint": "POST https://<your-domain>.atlassian.net/rest/api/3/issue",
+  "_comment_headers": {
+    "Authorization": "Basic base64(<email>:<api-token>)",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+  },
+  "fields": {
+    "project": { "key": "VFST2" },
+    "summary": "${title}",
+    "issuetype": { "name": "Task" },
+    "parent": { "key": "${epicKey}" },
+    "priority": { "name": "${priority}" },
+    "duedate": "${dueDateOrOmit}",
+    "assignee": { "accountId": "${assigneeAccountIdOrOmit}" },
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "${description}" }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Source quote: ", "marks": [{ "type": "strong" }] },
+            { "type": "text", "text": "${sourceQuote}", "marks": [{ "type": "em" }] }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Source: " },
+            {
+              "type": "text",
+              "text": "${sourceTypeLabel}",
+              "marks": [
+                { "type": "link", "attrs": { "href": "${sourceUrl}" } }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "Captured by Manco Capture Agent · Audit ID ${auditId}", "marks": [{ "type": "em" }] }
+          ]
+        }
+      ]
+    },
+    "labels": ["manco-capture", "${sourceTypeLabel}"]
+  }
+}
