@@ -1088,6 +1088,431 @@ def build_pptx(path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tools catalogue PowerPoint deck
+# ---------------------------------------------------------------------------
+
+# Status palette
+STATUS_AVAILABLE = ("● Available", PPTX_SUCCESS)
+STATUS_LIMITED = ("● Limited", PPTX_WARNING)
+STATUS_BLOCKED = ("● Blocked", PPTX_DANGER)
+STATUS_PENDING = ("● Pending setup", PPTX_MUTED)
+
+# Vendor accents (for the small badge in the corner of each slide)
+MICROSOFT_BLUE = PPTXColor(0x00, 0x67, 0xB8)
+ATLASSIAN_BLUE = PPTXColor(0x00, 0x52, 0xCC)
+GITHUB_BLACK = PPTXColor(0x24, 0x29, 0x2F)
+
+
+TOOLS = [
+    {
+        "name": "Microsoft Outlook",
+        "vendor": "Microsoft 365",
+        "vendor_color": MICROSOFT_BLUE,
+        "tagline": "Enterprise email and calendar",
+        "role": [
+            "Source of input emails — the trigger for the Capture pipeline.",
+            "Applying the \"Capture\" category to an email is the explicit user opt-in signal.",
+            "Email body, subject, sender and permalink flow into Power Automate as the source content.",
+        ],
+        "licence": "Included in M365 E3/E5 / Business Standard (already in place).",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Sprint 1",
+        "connection": "Outlook → Power Automate \"When a new email arrives (V3)\" trigger, filtered by category \"Capture\".",
+    },
+    {
+        "name": "Microsoft Teams",
+        "vendor": "Microsoft 365",
+        "vendor_color": MICROSOFT_BLUE,
+        "tagline": "Hub for chat, channels, and meetings",
+        "role": [
+            "Hosts the existing Manco Team and the new private channel \"Capture – Approvals\".",
+            "Surface for the Adaptive Card approval UX — every drafted ticket appears here.",
+            "Will be the source for Sprint 2: meeting transcripts as a second capture source.",
+        ],
+        "licence": "Included in M365 (in place).",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Sprint 1 (cards) + Sprint 2 (transcripts)",
+        "connection": "Power Automate → Teams \"Post adaptive card and wait for a response\" action posts into Capture – Approvals.",
+    },
+    {
+        "name": "Adaptive Cards",
+        "vendor": "Microsoft (open spec)",
+        "vendor_color": MICROSOFT_BLUE,
+        "tagline": "JSON-defined cards for Teams and chat surfaces",
+        "role": [
+            "The approval UX inside the Capture – Approvals channel.",
+            "Shows the AI-drafted ticket with editable fields (title, description, Epic, priority, due date) and Approve / Reject actions.",
+            "Approver's choices and edits flow back into Power Automate, driving the Jira create step.",
+        ],
+        "licence": "Free; built into Teams and Power Automate.",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Sprint 1",
+        "connection": "Card schema defined in `manco-capture/04-adaptive-card-approval.md`. Rendered by Power Automate, hosted in Teams.",
+    },
+    {
+        "name": "Microsoft SharePoint Online",
+        "vendor": "Microsoft 365",
+        "vendor_color": MICROSOFT_BLUE,
+        "tagline": "Document libraries, lists, and team sites",
+        "role": [
+            "Manco SharePoint site already hosts Manco documents.",
+            "\"Capture Audit\" list logs every drafted ticket — pending, approved, rejected, Jira key — for dedup and audit trail.",
+            "Future Sprint 3 (Insights): grounding source for the agent (via Copilot Studio Knowledge, pending upgrade).",
+        ],
+        "licence": "Included in M365 (in place).",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Sprint 1 (audit) + Sprint 3 (Insights source)",
+        "connection": "Power Automate \"Create item\" + \"Update item\" actions against the Capture Audit list.",
+    },
+    {
+        "name": "Microsoft Power Automate",
+        "vendor": "Microsoft Power Platform",
+        "vendor_color": MICROSOFT_BLUE,
+        "tagline": "Low-code workflow automation engine",
+        "role": [
+            "The orchestrator of the entire Capture pipeline.",
+            "Parent flow: Outlook trigger → call Copilot Studio for extraction → dispatch one child flow per drafted item.",
+            "Child flow: post Adaptive Card → wait for approval → call Jira REST API → update audit row.",
+            "Connects every other tool in the stack via standard connectors.",
+        ],
+        "licence": "Standard connectors are included. Premium connectors (HTTP, Copilot Studio invoke, AI Builder) typically need a Power Automate Premium licence — confirm with admin.",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Sprint 1 + Sprint 2",
+        "connection": "Central — every tool integrates through Power Automate. Two flows defined in build pack files 06 and 07.",
+    },
+    {
+        "name": "Power Platform — Environment Variables",
+        "vendor": "Microsoft Power Platform",
+        "vendor_color": MICROSOFT_BLUE,
+        "tagline": "Secure, environment-scoped configuration",
+        "role": [
+            "Stores Jira base URL, auth email, and API token without hardcoding them into flow definitions.",
+            "Token uses the \"Secret\" type, encrypted at rest, resolved only at flow runtime.",
+            "Lets the same flow promote cleanly across Dev / Test / Prod by overriding values per environment.",
+        ],
+        "licence": "Included with Power Apps / Power Automate. \"Secret\" type may require Azure Key Vault backing in some tenants.",
+        "status": STATUS_PENDING,
+        "sprint": "Sprint 1 (Phase 2)",
+        "connection": "Referenced inside flow actions via the Environment Variable picker. Three variables: manco_JiraBaseUrl, manco_JiraAuthEmail, manco_JiraApiToken (Secret).",
+    },
+    {
+        "name": "Microsoft Copilot Studio",
+        "vendor": "Microsoft Power Platform",
+        "vendor_color": MICROSOFT_BLUE,
+        "tagline": "Low-code platform for building AI agents",
+        "role": [
+            "Hosts the \"Manco Capture\" agent.",
+            "Topic \"Extract Action Items\" uses a Prompt node to call the LLM and return structured JSON.",
+            "Power Automate invokes the topic with email/transcript content and gets back the list of draftable Jira Tasks.",
+            "Future home of the Reporter (Sprint 2) and Insights (Sprint 3) agents.",
+        ],
+        "licence": "Tenant is on the basic / trial tier. \"Tools\", \"Knowledge\" and \"Agents\" features all show \"needs upgrade\". See business case.",
+        "status": STATUS_LIMITED,
+        "sprint": "Sprints 1, 2 and 3",
+        "connection": "Power Automate calls the agent topic via the Microsoft Copilot Studio connector. Topic returns JSON consumed by the rest of the flow.",
+    },
+    {
+        "name": "AI Builder Prompts (disabled in tenant)",
+        "vendor": "Microsoft Power Platform",
+        "vendor_color": MICROSOFT_BLUE,
+        "tagline": "GPT prompts directly invokable from Power Automate",
+        "role": [
+            "Originally planned as the LLM provider for extraction — would have been called directly from the flow.",
+            "Disabled at the tenant admin policy level (\"Prompts have been disabled — please contact your administrator\").",
+            "Workaround in use: route the same extraction prompt through Copilot Studio instead.",
+        ],
+        "licence": "Requires AI Builder capacity (separately licensed). Disabled by admin policy in our tenant regardless.",
+        "status": STATUS_BLOCKED,
+        "sprint": "N/A — workaround in place",
+        "connection": "Not used. Parallel admin review requested to enable Prompts under existing governance.",
+    },
+    {
+        "name": "Atlassian Jira Cloud",
+        "vendor": "Atlassian",
+        "vendor_color": ATLASSIAN_BLUE,
+        "tagline": "Issue and project tracking",
+        "role": [
+            "The target system — every approved Capture results in a new Task here.",
+            "Project key: VFST2 (Enterprise plan, Plans / Advanced Roadmaps enabled).",
+            "Hierarchy: Feature (12) → Epic → Task (the agent creates the Task and parents it to the chosen Epic).",
+        ],
+        "licence": "Jira Cloud Enterprise (in place).",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Sprint 1 + Sprint 2",
+        "connection": "Power Automate HTTP action POSTs to the Jira REST API with Basic auth (email + API token).",
+    },
+    {
+        "name": "Jira REST API + API tokens",
+        "vendor": "Atlassian",
+        "vendor_color": ATLASSIAN_BLUE,
+        "tagline": "HTTPS API for Jira issue operations + personal access tokens",
+        "role": [
+            "GET /search?jql=... to enumerate Epics under each Feature (drives the Adaptive Card dropdown).",
+            "POST /issue to create the Task, with parent = the chosen Epic.",
+            "GET /user/search to resolve assignee email → accountId before the create call.",
+            "Description sent in Atlassian Document Format (ADF) — required by Jira Cloud.",
+        ],
+        "licence": "Included with Jira Cloud licence; tokens issued from id.atlassian.com (one per user, revocable).",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Sprint 1",
+        "connection": "Token stored in Power Platform Secret env variable. Power Automate HTTP action sends Basic auth header on every call.",
+    },
+    {
+        "name": "Jira Plans (Advanced Roadmaps)",
+        "vendor": "Atlassian (Premium/Enterprise feature)",
+        "vendor_color": ATLASSIAN_BLUE,
+        "tagline": "Multi-project planning with cross-project hierarchy",
+        "role": [
+            "The Manco Board lives in Plans — that's how the 12 Features roll up.",
+            "Custom hierarchy level \"Feature\" sits above Epic, available only on Premium/Enterprise plans.",
+            "Approver picks one of the existing Epics on the Adaptive Card; the Task is parented to it, which automatically rolls up to the right Feature.",
+        ],
+        "licence": "Jira Cloud Premium or Enterprise (we are on Enterprise — in place).",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Sprint 1 onwards",
+        "connection": "We do not call a Plans-specific API. Standard issue-create with parent = Epic key is sufficient; Plans handles roll-up.",
+    },
+    {
+        "name": "GitHub",
+        "vendor": "GitHub (Microsoft)",
+        "vendor_color": GITHUB_BLACK,
+        "tagline": "Source control for the build pack",
+        "role": [
+            "Repository: snerantie/Copilot-Studio.",
+            "Branch feat/manco-capture-sprint1 + PR #1 holds the entire design, build artefacts and manager docs.",
+            "Subfolder manco-capture/for-manager/ contains the business case, status doc, this deck, and the generator script.",
+            "Lets the design + decisions be reviewed, versioned, and shared without IDE access.",
+        ],
+        "licence": "Personal / business GitHub account.",
+        "status": STATUS_AVAILABLE,
+        "sprint": "Cross-cutting",
+        "connection": "Authoring agent (Kiro) edits files → commits → pushes to remote → PR view in browser.",
+    },
+]
+
+
+def _draw_status_badge(slide, left, top, label: str, color: PPTXColor) -> None:
+    """Draw a small coloured status pill."""
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, left, top, PPTXInches(2.5), PPTXInches(0.4)
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = color
+    shape.line.fill.background()
+    tf = shape.text_frame
+    tf.margin_left = PPTXInches(0.1)
+    tf.margin_right = PPTXInches(0.1)
+    tf.margin_top = PPTXInches(0.02)
+    tf.margin_bottom = PPTXInches(0.02)
+    p = tf.paragraphs[0]
+    p.alignment = 2  # center
+    run = p.add_run()
+    run.text = label
+    run.font.size = PPTXPt(12)
+    run.font.bold = True
+    run.font.color.rgb = PPTX_WHITE
+    run.font.name = "Calibri"
+
+
+def _draw_vendor_badge(slide, left, top, vendor: str, color: PPTXColor) -> None:
+    """Top-right vendor identifier."""
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, left, top, PPTXInches(3.0), PPTXInches(0.4)
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = color
+    shape.line.fill.background()
+    tf = shape.text_frame
+    tf.margin_left = PPTXInches(0.1)
+    tf.margin_right = PPTXInches(0.1)
+    p = tf.paragraphs[0]
+    p.alignment = 2
+    run = p.add_run()
+    run.text = vendor
+    run.font.size = PPTXPt(11)
+    run.font.bold = True
+    run.font.color.rgb = PPTX_WHITE
+    run.font.name = "Calibri"
+
+
+def _draw_accent_bar(slide) -> None:
+    """Left-side accent stripe for visual continuity."""
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, PPTXInches(0), PPTXInches(0), PPTXInches(0.25), PPTXInches(7.5)
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = PPTX_ACCENT
+    shape.line.fill.background()
+
+
+def _add_tool_slide(prs, tool: dict, slide_num: int, total: int) -> None:
+    blank_layout = prs.slide_layouts[6]
+    s = prs.slides.add_slide(blank_layout)
+    _draw_accent_bar(s)
+
+    # Tool name (top left)
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(0.4), PPTXInches(8.5), PPTXInches(0.8),
+        tool["name"], size=30, bold=True, color=PPTX_ACCENT,
+    )
+    # Tagline
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(1.1), PPTXInches(9.0), PPTXInches(0.5),
+        tool["tagline"], size=14, italic=True, color=PPTX_MUTED,
+    )
+    # Vendor badge (top right)
+    _draw_vendor_badge(
+        s, PPTXInches(10.0), PPTXInches(0.5), tool["vendor"], tool["vendor_color"],
+    )
+
+    # Role in this project
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(1.9), PPTXInches(12.0), PPTXInches(0.45),
+        "Role in this project", size=16, bold=True, color=PPTX_ACCENT,
+    )
+    _add_bullets(
+        s, PPTXInches(0.8), PPTXInches(2.4), PPTXInches(12.0), PPTXInches(2.6),
+        [(r, 0) for r in tool["role"]],
+        size=14,
+    )
+
+    # Two-column footer: Licence | Status & Sprint
+    # Licence (left column)
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(5.0), PPTXInches(6.0), PPTXInches(0.4),
+        "Licence", size=14, bold=True, color=PPTX_ACCENT,
+    )
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(5.4), PPTXInches(6.0), PPTXInches(0.9),
+        tool["licence"], size=12, color=PPTX_MUTED,
+    )
+
+    # Status & sprint (right column)
+    _add_textbox(
+        s, PPTXInches(7.0), PPTXInches(5.0), PPTXInches(6.0), PPTXInches(0.4),
+        "Status in our tenant", size=14, bold=True, color=PPTX_ACCENT,
+    )
+    status_label, status_color = tool["status"]
+    _draw_status_badge(s, PPTXInches(7.0), PPTXInches(5.4), status_label, status_color)
+
+    _add_textbox(
+        s, PPTXInches(7.0), PPTXInches(5.9), PPTXInches(6.0), PPTXInches(0.4),
+        f"Used in: {tool['sprint']}", size=12, italic=True, color=PPTX_MUTED,
+    )
+
+    # How it connects (full-width bottom band)
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(6.45), PPTXInches(12.0), PPTXInches(0.4),
+        "How it connects", size=14, bold=True, color=PPTX_ACCENT,
+    )
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(6.85), PPTXInches(12.0), PPTXInches(0.5),
+        tool["connection"], size=11, color=PPTX_MUTED,
+    )
+
+    _add_footer(s, slide_num, total)
+
+
+def build_tools_pptx(path: Path) -> None:
+    prs = Presentation()
+    prs.slide_width = PPTXInches(13.333)
+    prs.slide_height = PPTXInches(7.5)
+    blank_layout = prs.slide_layouts[6]
+
+    total = 2 + len(TOOLS) + 1   # title + overview + tools + architecture
+
+    # ---------- Slide 1: Title ----------
+    s = prs.slides.add_slide(blank_layout)
+    _set_slide_background(s, PPTX_ACCENT)
+    _add_textbox(
+        s, PPTXInches(1.0), PPTXInches(2.2), PPTXInches(11.3), PPTXInches(1.5),
+        "Tools and technologies",
+        size=48, bold=True, color=PPTX_WHITE,
+    )
+    _add_textbox(
+        s, PPTXInches(1.0), PPTXInches(3.5), PPTXInches(11.3), PPTXInches(0.8),
+        "Manco Capture Agent — what we use and why",
+        size=24, color=PPTX_WHITE,
+    )
+    _add_textbox(
+        s, PPTXInches(1.0), PPTXInches(4.5), PPTXInches(11.3), PPTXInches(0.5),
+        "One slide per tool: what it is, how this project uses it, licence and tenant status.",
+        size=16, italic=True, color=PPTX_LIGHT_BG,
+    )
+    _add_textbox(
+        s, PPTXInches(1.0), PPTXInches(5.6), PPTXInches(11.3), PPTXInches(0.4),
+        f"{AUTHOR_PLACEHOLDER}  ·  {STATUS_DATE}",
+        size=14, color=PPTX_LIGHT_BG, italic=True,
+    )
+
+    # ---------- Slide 2: Overview table ----------
+    s = prs.slides.add_slide(blank_layout)
+    _draw_accent_bar(s)
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(0.3), PPTXInches(12.5), PPTXInches(0.7),
+        "Tool inventory at a glance", size=32, bold=True, color=PPTX_ACCENT,
+    )
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(1.0), PPTXInches(12.5), PPTXInches(0.5),
+        "All tools in the Manco Capture Agent stack, grouped by vendor",
+        size=14, italic=True, color=PPTX_MUTED,
+    )
+    overview_rows = []
+    for tool in TOOLS:
+        status_label = tool["status"][0].replace("● ", "")
+        overview_rows.append([tool["name"], tool["vendor"], status_label, tool["sprint"]])
+    _add_pptx_table(
+        s, PPTXInches(0.6), PPTXInches(1.7), PPTXInches(12.2), PPTXInches(5.5),
+        headers=["Tool", "Vendor", "Status in our tenant", "Used in"],
+        rows=overview_rows,
+    )
+    _add_footer(s, 2, total)
+
+    # ---------- One slide per tool ----------
+    for i, tool in enumerate(TOOLS, start=3):
+        _add_tool_slide(prs, tool, i, total)
+
+    # ---------- Final slide: architecture map ----------
+    s = prs.slides.add_slide(blank_layout)
+    _draw_accent_bar(s)
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(0.3), PPTXInches(12.5), PPTXInches(0.7),
+        "How they connect", size=32, bold=True, color=PPTX_ACCENT,
+    )
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(1.0), PPTXInches(12.5), PPTXInches(0.5),
+        "The Manco Capture Agent end-to-end data flow",
+        size=14, italic=True, color=PPTX_MUTED,
+    )
+
+    # Architecture rows: source -> orchestrator -> LLM -> audit -> approval -> target
+    arch_rows = [
+        ["1.  Source", "Microsoft Outlook (email categorised \"Capture\")"],
+        ["2.  Trigger", "Power Automate parent flow fires on the new category"],
+        ["3.  LLM", "Power Automate calls Microsoft Copilot Studio agent topic"],
+        ["    ", "→ Topic uses a Prompt node, returns structured JSON of action items"],
+        ["4.  Audit", "Power Automate writes \"Pending\" row to SharePoint \"Capture Audit\" list"],
+        ["5.  Approval", "Power Automate child flow posts Adaptive Card in Teams (Capture – Approvals channel) and waits"],
+        ["6.  Create", "On Approve, Power Automate calls Jira REST API to create the Task, parented to the chosen Epic in VFST2"],
+        ["7.  Confirm", "Adaptive Card updated with the new Jira key; SharePoint audit row updated with key + approver + timestamp"],
+    ]
+    _add_pptx_table(
+        s, PPTXInches(0.6), PPTXInches(1.7), PPTXInches(12.2), PPTXInches(5.0),
+        headers=["Step", "What happens (which tools are involved)"],
+        rows=arch_rows,
+    )
+    _add_textbox(
+        s, PPTXInches(0.6), PPTXInches(6.8), PPTXInches(12.2), PPTXInches(0.4),
+        "Reference: build pack at github.com/snerantie/Copilot-Studio · manco-capture/",
+        size=11, italic=True, color=PPTX_MUTED,
+    )
+    _add_footer(s, total, total)
+
+    prs.save(path)
+    print(f"  wrote {path.name}")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -1102,6 +1527,7 @@ def main() -> None:
 
     print("Generating PowerPoint deck...")
     build_pptx(OUT_DIR / "manco-capture-business-case.pptx")
+    build_tools_pptx(OUT_DIR / "manco-capture-tools-catalogue.pptx")
 
     print("Done.")
 

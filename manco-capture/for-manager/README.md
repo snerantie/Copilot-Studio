@@ -10,6 +10,7 @@ admin. Both are written to be readable without technical context.
 | [`business-case-upgrade.md`](./business-case-upgrade.md) | Markdown (canonical) | Manager (decision-maker) | Justify the Copilot Studio capability upgrade and AI Builder Prompts admin policy review |
 | [`business-case-upgrade.docx`](./business-case-upgrade.docx) | Word | Manager | Same content, ready to email or attach |
 | [`manco-capture-business-case.pptx`](./manco-capture-business-case.pptx) | PowerPoint (11 slides, 16:9) | Manager (meeting) | Distilled exec deck of the business case for a verbal walkthrough |
+| [`manco-capture-tools-catalogue.pptx`](./manco-capture-tools-catalogue.pptx) | PowerPoint (15 slides, 16:9) | Manager + Power Platform admin | "What tools are we using and why" — one slide per tool (Outlook, Teams, Power Automate, Copilot Studio, Jira, etc.) with role, licence, tenant status |
 | [`status-and-blockers.md`](./status-and-blockers.md) | Markdown (canonical) | Manager + Power Platform admin | Snapshot of Sprint 1 progress, exact blockers, decisions needed |
 | [`status-and-blockers.docx`](./status-and-blockers.docx) | Word | Manager + admin | Same content, ready to email or attach |
 
